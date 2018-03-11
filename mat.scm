@@ -6,10 +6,8 @@
 ;; improve the way mat-add is written
 
 ;;;; FEATURES TO ADD
-;; inverse
-;; gaussian elimination
-;; solving linear equations
 ;; singular value decomposition
+;; symbolic computation
 
 ;;; Chicken specific
 (require-extension srfi-133) ; vector operations
@@ -72,6 +70,14 @@
   (vector-unfold (lambda (i)
 		   (mat-ref mat i i)) (cols mat)))
 
+;;; return a copy of the matrix
+(define (mat-copy mat)
+  (let* ((r (rows mat))
+	 (res (make-mat r (cols mat))))
+    (for (i from 0 to r)
+      (row-set! res i (vector-copy (row-ref mat i))))
+    res))
+
 (define (rows mat)
   (car (dim mat)))
 
@@ -92,17 +98,37 @@
 (define (transpose mat)
   (apply vector (apply map vector (mat->list mat))))
 
+;; dot product of two vectors
+(define (dot v1 v2)
+  (if (= (vector-length v1) (vector-length v2))
+      (vector-fold + 0
+		   (vector-map * v1 v2))
+      (error "Invalid dimensions")))
+
 ;; simple algorithm. O(n^3)
-(define (mat-mul A B)
-  (if (= (cols A) (rows B))
-      (let ((C (make-mat (rows A) (cols B))))
+(define (mat*mat A B)
+  (let ((ca (cols A))
+	(cb (cols B))
+	(ra (rows A))
+	(rb (rows B)))
+    (if (= ca rb)
+	(let ((C (make-mat ra cb)))
+	  (for (i from 0 to ra)
+	    (for (j from 0 to cb)
+	      (let ((sum 0))
+		(for (k from 0 to ca)
+		  (set! sum (+ sum (* (mat-ref A i k)
+				      (mat-ref B k j)))))
+		(mat-set! C i j sum))))
+	  C)
+	(error "Invalid dimensions"))))
+
+;; b interpreted as a column vector
+(define (mat*vec A b)
+  (if (= (cols A) (vector-length b))
+      (let ((C (make-vector (rows A) 0)))
 	(for (i from 0 to (rows A))
-	  (for (j from 0 to (cols B))
-	    (let ((sum 0))
-	      (for (k from 0 to (cols A))
-		(set! sum (+ sum (* (mat-ref A i k)
-				    (mat-ref B k j)))))
-	      (mat-set! C i j sum))))
+	  (vector-set! C i (dot (row-ref A i) b)))
 	C)
       (error "Invalid dimensions")))
 
@@ -140,6 +166,12 @@
 	(mat-set! M i j (random n))))
     M))
 
+(define (random-vec n s)
+  (let ((M (make-vector s 0)))
+    (for (i from 0 to s)
+      (vector-set! M i (random n)))
+    M))
+
 ;; row operations
 (define (row-scl! mat r p)
   (for (i from 0 to (cols mat))
@@ -160,48 +192,6 @@
 				   (vector (vector-ref vec i)))))
     R))
 
-;;; reduce matrix to row echelon form
-(define (forward-elim mat)
-  (for (k from 0 to (rows mat))
-    (let* ((i-max k)
-	   (v-max (mat-ref mat i-max k)))
-      (for (i from (+ k 1) to (rows mat))
-	(if (> (abs (mat-ref mat i k)) v-max)
-	    (set! v-max (mat-ref mat i k))
-	    (set! i-max i)))
-      (if (zero? (mat-ref mat k i-max))
-	  k)
-      (if (not (equal? i-max k))
-	  (row-swp! mat k i-max))
-      (for (i from (+ k 1) to (rows mat))
-	(let ((f (/ (mat-ref mat i k) (mat-ref mat k k))))
-	  (for (j from (+ k 1) to (rows mat))
-	    (mat-set! mat i j (- (mat-ref mat i j)
-			     (* (mat-ref mat k j) f))))
-	  (mat-set! mat i k 0)))))
-  -1)
-
-;;; calculate value of unknowns
-(define (back-sub mat)
-  (let ((res (make-vector (rows mat) 0)))
-    (for (i from (- (rows mat) 1) downto -1)
-      (vector-set! res i (mat-ref mat i (rows mat)))
-      (for (j from (+ i 1) to (rows mat))
-	(vector-set! res i (- (vector-ref res i)
-			      (* (mat-ref mat i j)
-				 (vector-ref res j)))))
-      (vector-set! res i (/ (vector-ref res i)
-			    (mat-ref mat i i))))
-    res))
-
-;;; Gaussian elimination
-;;; solve A*x = b
-(define (gaussian-elim A b)
-  (let* ((aug (aug-mat A b))
-	 (singular-flag (forward-elim aug)))
-    (if (equal? singular-flag -1)
-	(back-sub aug)
-	(begin (display "Singular Matrix") (newline)))))
 
 ;; determinants
 (define (det-2x2 mat)
@@ -236,7 +226,7 @@
 ;; the kth column of L
 ;;
 ;; retuns a pair L U such that mat = L * U
-(define (lu-decomp A)
+(define (doolittle-decomp A)
   (let* ((n (rows A))
 	 (L (make-mat n n))
 	 (U (make-mat n n)))
@@ -258,13 +248,13 @@
 			     (mat-ref U i i)))))))
     (cons L U)))
 
-;;; Determinant (uses LU decomposition)
+;;; Determinant (uses Doolittle LU decomposition)
 ;; det(A) = det(LU) = det(L)*det(U)
 ;; Determinant of an upper or lower triangular
 ;; matrix is the product of the diagonal elements
 ;; Since L's diagonals are 1's, det(A) = det(U)
-(define (det mat)
-  (let* ((U (cdr (lu-decomp mat)))
+(define (det-doolittle mat)
+  (let* ((U (cdr (doolittle-decomp mat)))
 	 (diags (diag-ref U))
 	 (prod 1))
     (for (i from 0 to (vector-length diags))
@@ -287,10 +277,100 @@
 			(25 49 40 45)
 			(86 30 93 34))))
 
-;;;; Test functions
-(define (test-lu-decomp mat)
-  (let* ((decomp (lu-decomp mat))
-	 (L (car decomp))
-	 (U (cdr decomp)))
-    (equal? mat (mat-mul L U))))
+;;; LUP decompose
+;;; code translated from https://en.wikipedia.org/wiki/LU_decomposition
+;;; Matrix is changed. Contains both matrices L-E and U
+;;; as A=(L-E)+U such that P*A = L*U.
+;;; P is not stored as a matrix, but in an int vector of size N+1
+;;; containing column indexes where P has 1. Last element P[N] = S+N
+;;; where S is the number of row exchanges needed for determinant
+;;; computation det(P) = (-1)^S
+(define (lup-decompose! A tol)
+  (let* ((N (rows A))
+	 (P (vector-unfold (lambda (i x) (values x (+ x 1))) (+ N 1) 0)))
+    (for (i from 0 to N)
+      (let ((maxA 0.0)
+	    (imax i))
+	(for (k from i to N)
+	  (if (> (abs (mat-ref A k i)) maxA)
+	      (begin (set! maxA (abs (mat-ref A k i)))
+		     (set! imax k))))
+	(if (< maxA tol)
+	    (error "Matrix is degenerate"))
+	(if (not (equal? imax i))
+	    (let ((j (vector-ref P i)))
+	      (vector-set! P i (vector-ref P imax))
+	      (vector-set! P imax j)
+	      (row-swp! A i imax)
+	      (vector-set! P N (+ 1 (vector-ref P N)))))
+	(for (j from (+ i 1) to N)
+	  (mat-set! A j i (/ (mat-ref A j i)
+			     (mat-ref A i i)))
+	  (for (k from (+ i 1) to N)
+	    (mat-set! A j k (- (mat-ref A j k)
+			       (* (mat-ref A j i)
+				  (mat-ref A i k))))))))
+    (cons A P)))
 
+;;; solve A*x = b using lup-decompose
+(define (solve-Ax-b A b)
+  (let* ((n (rows A))
+	 (tmp (mat-copy A))
+	 (lup (lup-decompose! tmp 1e-16))
+	 (mat (car lup))
+	 (perm (cdr lup))
+	 (x (make-vector n 0)))
+    (for (i from 0 to n)
+      (vector-set! x i (vector-ref b (vector-ref perm i)))
+      (for (k from 0 to i)
+	(vector-set! x i (- (vector-ref x i)
+			    (* (mat-ref mat i k)
+			       (vector-ref x k))))))
+    (for (i from (- n 1) downto -1)
+      (for (k from (+ i 1) to n)
+	(vector-set! x i (- (vector-ref x i)
+			    (* (mat-ref mat i k)
+			       (vector-ref x k)))))
+      (vector-set! x i (/ (vector-ref x i)
+			  (mat-ref mat i i))))
+    x))
+
+;;; Invert a matrix using lup-decompose
+(define (invert A)
+  (let* ((n (rows A))
+	 (tmp (mat-copy A))
+	 (lup (lup-decompose! tmp 1e-16))
+	 (mat (car lup))
+	 (perm (cdr lup))
+	 (inv (make-mat n n)))
+    (for (j from 0 to n)
+      (for (i from 0 to n)
+	(if (= j (vector-ref perm i))
+	    (mat-set! inv i j 1.0)
+	    (mat-set! inv i j 0.0))
+	(for (k from 0 to i)
+	  (mat-set! inv i j (- (mat-ref inv i j)
+			       (* (mat-ref mat i k)
+				  (mat-ref inv k j))))))
+      (for (i from (- n 1) downto -1)
+	(for (k from (+ i 1) to n)
+	  (mat-set! inv i j (- (mat-ref inv i j)
+			       (* (mat-ref mat i k)
+				  (mat-ref inv k j)))))
+	(mat-set! inv i j (/ (mat-ref inv i j)
+			     (mat-ref mat i i)))))
+    inv))
+
+;;; Determinant of a matrix using lup-decompose
+(define (det A)
+  (let* ((n (rows A))
+	 (tmp (mat-copy A))
+	 (lup (lup-decompose! tmp 1e-16))
+	 (mat (car lup))
+	 (perm (cdr lup))
+	 (d (mat-ref mat 0 0)))
+    (for (i from 1 to n)
+      (set! d (* d (mat-ref mat i i))))
+    (if (zero? (remainder (- (vector-ref perm n) n) 2))
+	d
+	(- d))))
