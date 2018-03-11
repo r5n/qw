@@ -11,6 +11,10 @@
 ;; solving linear equations
 ;; singular value decomposition
 
+;;; Chicken specific
+(require-extension srfi-133) ; vector operations
+(require-extension extras)   ; for random
+
 ;;;; Macros
 (define-syntax for
   (syntax-rules (from to downto by)
@@ -63,11 +67,11 @@
 (define (col-ref mat n)
   (vector-map (lambda (row) (vector-ref row n)) mat))
 
+;;; works only for square matrices as of now
 (define (diag-ref mat)
-  (let ((i -1))
-    (vector-map (lambda (x)
-		  (begin (set! i (+ i 1))
-			 (vector-ref x i))) mat)))
+  (vector-unfold (lambda (i)
+		   (mat-ref mat i i)) (cols mat)))
+
 (define (rows mat)
   (car (dim mat)))
 
@@ -115,7 +119,12 @@
       (error "Invalid dimensions")))
 
 (define (trace mat)
-  (apply + (vector->list (diag-ref mat))))
+  (vector-fold + 0 (diag-ref mat)))
+
+(define (print-mat mat)
+  (for (i from 0 to (rows mat))
+    (display (row-ref mat i))
+    (newline)))
 
 ;; special matrices
 (define (iden n)
@@ -137,13 +146,62 @@
     (mat-set! mat r i (* p (mat-ref mat r i)))))
 
 (define (row-swp! mat r1 r2)
-  (let ((tmp (row-ref mat r1)))
-    (row-set! mat r1 (row-ref mat r2))
-    (row-set! mat r2 tmp)))
+  (vector-swap! mat r1 r2))
 
 (define (row-add! mat r1 r2)
   (row-set! mat r1
 	    (vector-map + (row-ref mat r1) (row-ref mat r2))))
+
+;;; augment a matrix with single vector
+(define (aug-mat mat vec)
+  (let ((R (make-mat (rows mat) (+ 1 (cols mat)))))
+    (for (i from 0 to (rows R))
+      (row-set! R i (vector-append (row-ref mat i)
+				   (vector (vector-ref vec i)))))
+    R))
+
+;;; reduce matrix to row echelon form
+(define (forward-elim mat)
+  (for (k from 0 to (rows mat))
+    (let* ((i-max k)
+	   (v-max (mat-ref mat i-max k)))
+      (for (i from (+ k 1) to (rows mat))
+	(if (> (abs (mat-ref mat i k)) v-max)
+	    (set! v-max (mat-ref mat i k))
+	    (set! i-max i)))
+      (if (zero? (mat-ref mat k i-max))
+	  k)
+      (if (not (equal? i-max k))
+	  (row-swp! mat k i-max))
+      (for (i from (+ k 1) to (rows mat))
+	(let ((f (/ (mat-ref mat i k) (mat-ref mat k k))))
+	  (for (j from (+ k 1) to (rows mat))
+	    (mat-set! mat i j (- (mat-ref mat i j)
+			     (* (mat-ref mat k j) f))))
+	  (mat-set! mat i k 0)))))
+  -1)
+
+;;; calculate value of unknowns
+(define (back-sub mat)
+  (let ((res (make-vector (rows mat) 0)))
+    (for (i from (- (rows mat) 1) downto -1)
+      (vector-set! res i (mat-ref mat i (rows mat)))
+      (for (j from (+ i 1) to (rows mat))
+	(vector-set! res i (- (vector-ref res i)
+			      (* (mat-ref mat i j)
+				 (vector-ref res j)))))
+      (vector-set! res i (/ (vector-ref res i)
+			    (mat-ref mat i i))))
+    res))
+
+;;; Gaussian elimination
+;;; solve A*x = b
+(define (gaussian-elim A b)
+  (let* ((aug (aug-mat A b))
+	 (singular-flag (forward-elim aug)))
+    (if (equal? singular-flag -1)
+	(back-sub aug)
+	(begin (display "Singular Matrix") (newline)))))
 
 ;; determinants
 (define (det-2x2 mat)
@@ -235,3 +293,4 @@
 	 (L (car decomp))
 	 (U (cdr decomp)))
     (equal? mat (mat-mul L U))))
+
