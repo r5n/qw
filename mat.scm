@@ -7,11 +7,22 @@
 
 ;;;; FEATURES TO ADD
 ;; singular value decomposition
-;; symbolic computation
+;; symbolic computation - +, *, /, - should handle symbols as well
+
+;;;; Scheme Implementation
+;; Debating between MIT-SCHEME and CHICKEN SCHEME
+;; MIT-SCHEME doesn't have a bad compiler but the
+;; vector-unfold and vector-fold methods would not
+;; work. Will have to reimplement a few things
+;; slib doesn't support CHICKEN, but CHICKEN has a
+;; good collection of eggs. Plotting might be easy
+;; with CHICKEN, compared to MIT-SCHEME.
+;; Both implement R5RS SCHEME
 
 ;;; Chicken specific
 (require-extension srfi-133) ; vector operations
 (require-extension extras)   ; for random
+(require-extension random-bsd) ; for random-real
 
 ;;;; Macros
 (define-syntax for
@@ -133,24 +144,62 @@
       (error "Invalid dimensions")))
 
 ;; can make better using vector-map +
-(define (mat-add A B)
-  (if (equal? (dim A) (dim B))
-      (let ((C (make-mat (rows A) (cols B))))
-	(for (i from 0 to (rows A))
-	  (for (j from 0 to (cols B))
-	    (mat-set! C i j
-		      (+ (mat-ref A i j)
-			 (mat-ref B i j)))))
-	C)
-      (error "Invalid dimensions")))
+;; (define (mat+mat A B)
+;;   (if (equal? (dim A) (dim B))
+;;       (let ((C (make-mat (rows A) (cols B))))
+;; 	(for (i from 0 to (rows A))
+;; 	  (for (j from 0 to (cols B))
+;; 	    (mat-set! C i j
+;; 		      (+ (mat-ref A i j)
+;; 			 (mat-ref B i j)))))
+;; 	C)
+;;       (error "Invalid dimensions")))
+
+(define (mat+mat A B)
+  (vector-map (lambda (x y) (vector-map + x y)) A B))
+
+(define (mat*num A n)
+  (vector-map (lambda (x) (vector-map (lambda (e) (* e n)) x)) A))
+
+;; negate every element in matrix
+(define (negate mat)
+  (vector-map (lambda (x) (vector-map - x)) mat))
+
+(define (mat-mat A B)
+  (mat+mat A (negate B)))
+
+;; add a num to each element
+(define (mat+num A n)
+  (mat-map (lambda (x) (+ x n)) A))
+
+(define (mat-map f A)
+  (vector-map (lambda (row) (vector-map (lambda (elt) (f elt)) row)) A))
 
 (define (trace mat)
   (vector-fold + 0 (diag-ref mat)))
 
 (define (print-mat mat)
-  (for (i from 0 to (rows mat))
-    (display (row-ref mat i))
-    (newline)))
+  (let ((max-strlen
+	 (foldl (lambda (a x) (max a
+				   (string-length (number->string x))))
+		0 (concatenate (mat->list mat)))))
+    (for (i from 0 to (rows mat))
+      (if (or (= i 0) (= i (- (rows mat) 1)))
+	  (display "[")
+	  (display "|"))
+      (for (j from 0 to (cols mat))
+	(display (string-append
+		  (make-string (- max-strlen
+				  (string-length (number->string (mat-ref mat i j))))
+			       #\space)
+		  (number->string (mat-ref mat i j))
+		  (if (= j (- (cols mat) 1))
+		      ""
+		      "  "))))
+      (if (or (= i 0) (= i (- (rows mat) 1)))
+	  (display "]")
+	  (display "|"))
+      (display "\n"))))
 
 ;; special matrices
 (define (iden n)
@@ -164,6 +213,13 @@
     (for (i from 0 to r)
       (for (j from 0 to c)
 	(mat-set! M i j (random n))))
+    M))
+
+(define (random-real-mat r c)
+  (let ((M (make-mat r c)))
+    (for (i from 0 to r)
+      (for (j from 0 to c)
+	(mat-set! M i j (random-real))))
     M))
 
 (define (random-vec n s)
