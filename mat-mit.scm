@@ -349,6 +349,34 @@
 	d
 	(- d))))
 
+;;;; Special Matrices
+(define (iden n)
+  (let ((id (make-mat n n)))
+    (for (i from 0 to n)
+      (mat-set! id i i 1))
+    id))
+
+(define (random-mat n r c)
+  (let ((M (make-mat r c)))
+    (for (i from 0 to r)
+      (for (j from 0 to c)
+	(mat-set! M i j (random n))))
+    M))
+
+(define (random-real-mat r c)
+  (let ((M (make-mat r c)))
+    (for (i from 0 to r)
+      (for (j from 0 to c)
+	(mat-set! M i j (random-real))))
+    M))
+
+(define (random-vec n s)
+  (let ((M (make-vector s 0)))
+    (for (i from 0 to s)
+      (vector-set! M i (random n)))
+    M))
+
+
 ;;;; Test Matrices
 (define m1 (list->mat '((2 0) (-3 -1))))
 (define m2 (list->mat '((2 3 -7) (1 0 1))))
