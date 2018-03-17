@@ -349,7 +349,14 @@
 	d
 	(- d))))
 
+
 ;;;; Special Matrices
+(define (repvec-rows v d)
+  ;; repeat a vector v, d times
+  ;; matrix has size d x (length v)
+  (make-initialized-vector d
+			   (lambda (i) v)))
+
 (define (iden n)
   (let ((id (make-mat n n)))
     (for (i from 0 to n)

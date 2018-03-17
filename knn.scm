@@ -42,6 +42,7 @@
 				       (lambda (i) (cdr (vector-ref k-neighbors i))))))
     (most-freq votes)))
 
+;; quite ineffective. works for now.
 (define (most-freq v)
   (let ((h (make-hash-table)))
     (for (i from 0 to (vector-length v))
