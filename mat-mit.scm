@@ -62,6 +62,17 @@
   (vector-map (lambda (x) (make-vector cols 0))
 	      (make-vector rows 0)))
 
+;;; fix
+(define (make-matrix rows cols #!optional gen)
+  (let ((m (vector-map (lambda (x) (make-vector cols 0))
+		       (make-vector rows 0))))
+    (if gen
+	(for (i from 0 to rows)
+	  (for (j from 0 to cols)
+	    (vector-set! (vector-ref m i) j (gen i j)))))
+    m))
+
+
 (define (dim mat)
   (cons (vector-length mat)
 	(vector-length (vector-ref mat 0))))
@@ -154,7 +165,7 @@
 (define (mat+num A n)
   (mat-map (lambda (x) (+ x n)) A))
 
-(define (trace mat)
+(define (trace-mat mat)
   (vector-fold + 0 (diag-ref mat)))
 
 ;; row operations
