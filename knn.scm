@@ -1,4 +1,6 @@
-;;;; K Nearest Neighbors
+ ;;;; K Nearest Neighbors
+
+(declare (usual-integrations))
 
 (load "mat-mit")
 
@@ -8,14 +10,6 @@
    (lambda (i)
      (cons (vector-ref v1 i) (vector-ref v2 i)))))
 
-(define sample-data-set
-  (list->mat '((1 1.1)
-	       (1 1)
-	       (0 0)
-	       (0 0.1))))
-
-(define labels
-  (list->vector '(A A B B)))
 
 (define (calculate-distances input data-set)
   (let* ((len (vector-length data-set))
@@ -43,12 +37,25 @@
     (most-freq votes)))
 
 ;; quite ineffective. works for now.
-(define (most-freq v)
+(define (most-freq vec)
   (let ((h (make-hash-table)))
-    (for (i from 0 to (vector-length v))
+    (do ((i 0 (+ i 1)))
+	((= i (vector-length vec)))
       (hash-table/modify! h
-			  (vector-ref v i)
+			  (vector-ref vec i)
 			  0
-			  (lambda (e) (+ e 1))))
+			  (lambda (elt) (1+ elt))))
     (caar (sort (hash-table->alist h)
 		(lambda (a b) (> (cdr a) (cdr b)))))))
+
+;;;; Tests
+(define sample-data-set
+  (list->mat '((1 1.1)
+	       (1 1)
+	       (0 0)
+	       (0 0.1))))
+
+(define labels
+  (list->vector '(A A B B)))
+
+
